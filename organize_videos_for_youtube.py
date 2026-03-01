@@ -409,8 +409,41 @@ def upload_video(youtube, filepath, title, playlist_id):
     return video_id
 
 
+def _exit_on_api_error(e, progress_file, uploaded):
+    """Check for HTTP errors and exit immediately if a fatal API error occurs."""
+    try:
+        from googleapiclient.errors import HttpError as _HttpError
+        if isinstance(e, _HttpError):
+            status = e.resp.status
+            try:
+                details = json.loads(e.content.decode())
+                reason = details.get('error', {}).get('errors', [{}])[0].get('reason', '')
+                message = details.get('error', {}).get('message', str(e))
+            except Exception:
+                reason = ''
+                message = str(e)
+
+            if status == 403:
+                if 'quotaExceeded' in reason or 'dailyLimitExceeded' in reason:
+                    print(f"\n  ❌ YouTube API quota exceeded.")
+                    print(f"     Reason: {reason}")
+                    print(f"     Progress saved ({len(uploaded)} videos uploaded).")
+                    print(f"     Re-run tomorrow with --resume to continue.\n")
+                else:
+                    print(f"\n  ❌ YouTube API returned 403 Forbidden.")
+                    print(f"     {message}")
+                    print(f"     Progress saved ({len(uploaded)} videos uploaded).")
+                    print(f"     Fix the issue then re-run with --resume.\n")
+                print(f"  📄 Progress file: {progress_file}")
+                sys.exit(1)
+    except ImportError:
+        pass
+
+
 def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=False):
     """Upload all organized videos to YouTube, with resume support."""
+    from googleapiclient.errors import HttpError
+
     uploaded = {}
     if resume and os.path.exists(progress_file):
         with open(progress_file) as f:
@@ -425,7 +458,12 @@ def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=Fa
     for year in sorted(video_stats.keys()):
         files_in_year = sorted(video_stats[year]['files'], key=lambda f: f['date'])
         print(f"  📁 {year} — creating/finding playlist...")
-        playlist_id = get_or_create_playlist(youtube, year)
+        try:
+            playlist_id = get_or_create_playlist(youtube, year)
+        except HttpError as e:
+            _exit_on_api_error(e, progress_file, uploaded)
+            print(f"\n  ❌ Failed to create/find playlist for {year}: {e}\n")
+            sys.exit(1)
         print(f"     Playlist: Aarav's Videos {year}  (id: {playlist_id})\n")
 
         year_dir = Path(output_dir) / year
@@ -454,6 +492,10 @@ def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=Fa
                 with open(progress_file, 'w') as f:
                     json.dump(uploaded, f, indent=2)
                 time.sleep(1)  # Gentle rate limiting
+            except HttpError as e:
+                _exit_on_api_error(e, progress_file, uploaded)
+                print(f"         ⚠️  Upload failed (HTTP {e.resp.status}): {e}")
+                sys.exit(1)
             except Exception as e:
                 print(f"         ⚠️  Upload failed: {e}")
 

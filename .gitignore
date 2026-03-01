@@ -1,0 +1,36 @@
+# Google OAuth credentials — NEVER commit these
+client_secrets.json
+*.json.secret
+token.json
+*_token.json
+.youtube_upload_token.json
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Claude Code local settings (personal permissions)
+.claude/settings.local.json
+
+# Upload progress (personal, machine-specific)
+upload_progress.json
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log

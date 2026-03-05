@@ -1,7 +1,7 @@
 #!/bin/bash
 # Daily YouTube upload runner — called by launchd
 
-PROJECT_DIR="/Users/ravigajul/Downloads/PhotoOrganizer"
+PROJECT_DIR="$HOME/Downloads/PhotoOrganizer"  # update this path if cloned elsewhere
 PYTHON="$PROJECT_DIR/.venv/bin/python3"
 SCRIPT="$PROJECT_DIR/organize_videos_for_youtube.py"
 SOURCE="$HOME/Desktop/MyKidsMedia"

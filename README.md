@@ -7,7 +7,7 @@ Organizes photos/videos exported from Mac Photos into year-based folders, then a
 - Organizes videos and photos into `YYYY/` subfolders by creation date
 - Renames files with a `YYYY-MM-DD_` date prefix for easy sorting
 - Uploads videos to YouTube via the YouTube Data API v3:
-  - Auto-creates yearly playlists (e.g. "Aarav's Videos 2024")
+  - Auto-creates yearly playlists (e.g. "My Videos 2024")
   - Sets title from filename + date (e.g. "Jun 1, 2024 - birthday party")
   - Marks all videos as **Unlisted** and **Made for Kids**
   - Saves upload progress — resume safely after interruptions or quota limits
@@ -95,10 +95,10 @@ The LaunchAgent is loaded into launchd (macOS's service manager) and persists ac
 
 ```bash
 # Make the script executable
-chmod +x /Users/ravigajul/Downloads/PhotoOrganizer/run_upload.sh
+chmod +x /path/to/PhotoOrganizer/run_upload.sh
 
 # Load the LaunchAgent (registers it with macOS)
-launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+launchctl load ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
 ```
 
 ### Manage the schedule
@@ -108,13 +108,13 @@ launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
 launchctl list | grep youtube-upload
 
 # Trigger a manual run immediately (for testing)
-launchctl start com.ravigajul.youtube-upload
+launchctl start com.yourname.youtube-upload
 
 # Stop and unload the schedule (disables daily runs)
-launchctl unload ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+launchctl unload ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
 
 # Re-enable it
-launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+launchctl load ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
 ```
 
 ### Logs
@@ -129,11 +129,11 @@ tail -f ~/Desktop/YouTube_Upload/upload.log
 
 ### Change the scheduled time
 
-Edit the plist file at `~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist` and update the `Hour` value (24-hour format), then reload:
+Edit the plist file at `~/Library/LaunchAgents/com.yourname.youtube-upload.plist` and update the `Hour` value (24-hour format), then reload:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
-launchctl load  ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+launchctl unload ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
+launchctl load  ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
 ```
 
 ## YouTube Quota

@@ -71,7 +71,7 @@ Progress is saved to `upload_progress.json` in the output folder after each vide
 ## CLI Reference
 
 | Flag | Description |
-|---|---|
+| --- | --- |
 | `--videos-only` | Process only video files (skip photos) |
 | `--upload` | Upload organized videos to YouTube |
 | `--upload-dry-run` | Preview upload plan without uploading |
@@ -79,6 +79,62 @@ Progress is saved to `upload_progress.json` in the output folder after each vide
 | `--client-secrets PATH` | Path to `client_secrets.json` (default: `./client_secrets.json`) |
 | `--output-dir PATH` | Where to write organized files (default: `~/Desktop/YouTube_Upload`) |
 | `--export-report` | Save a JSON report of all organized files |
+
+## Daily Scheduled Upload (macOS)
+
+Since uploading 1,000+ videos takes multiple days due to YouTube's API quota, the project includes a launchd setup to automatically resume the upload every day at **1:00 PM**.
+
+### How it works
+
+1. **`run_upload.sh`** — a shell script that runs the resume command and appends output to a log file
+2. **`~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist`** — a macOS LaunchAgent that tells the OS to run the script daily at 1 PM
+
+The LaunchAgent is loaded into launchd (macOS's service manager) and persists across reboots. Each day at 1 PM, it calls `run_upload.sh`, which resumes from where the previous day left off using the `--resume` flag and the saved `upload_progress.json`.
+
+### One-time setup
+
+```bash
+# Make the script executable
+chmod +x /Users/ravigajul/Downloads/PhotoOrganizer/run_upload.sh
+
+# Load the LaunchAgent (registers it with macOS)
+launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+```
+
+### Manage the schedule
+
+```bash
+# Verify it is loaded
+launchctl list | grep youtube-upload
+
+# Trigger a manual run immediately (for testing)
+launchctl start com.ravigajul.youtube-upload
+
+# Stop and unload the schedule (disables daily runs)
+launchctl unload ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+
+# Re-enable it
+launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+```
+
+### Logs
+
+Each run appends to `~/Desktop/YouTube_Upload/upload.log`:
+
+```bash
+tail -f ~/Desktop/YouTube_Upload/upload.log
+```
+
+> **Note:** The Mac must be awake at 1 PM for the job to trigger. If it is asleep, macOS will not catch up on missed runs — the next trigger will be the following day at 1 PM.
+
+### Change the scheduled time
+
+Edit the plist file at `~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist` and update the `Hour` value (24-hour format), then reload:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+launchctl load  ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+```
 
 ## YouTube Quota
 

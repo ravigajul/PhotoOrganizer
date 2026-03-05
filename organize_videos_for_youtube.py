@@ -423,7 +423,16 @@ def _exit_on_api_error(e, progress_file, uploaded):
                 reason = ''
                 message = str(e)
 
-            if status == 403:
+            if status == 400 and 'uploadLimitExceeded' in reason:
+                print(f"\n  ❌ YouTube account upload limit reached.")
+                print(f"     Your account needs phone verification to upload more videos.")
+                print(f"     1. Go to: https://www.youtube.com/verify")
+                print(f"     2. Verify your account with a phone number.")
+                print(f"     3. Re-run with --resume to continue from where you left off.")
+                print(f"     Progress saved ({len(uploaded)} videos uploaded).")
+                print(f"  📄 Progress file: {progress_file}")
+                sys.exit(1)
+            elif status == 403:
                 if 'quotaExceeded' in reason or 'dailyLimitExceeded' in reason:
                     print(f"\n  ❌ YouTube API quota exceeded.")
                     print(f"     Reason: {reason}")

@@ -424,11 +424,9 @@ def _exit_on_api_error(e, progress_file, uploaded):
                 message = str(e)
 
             if status == 400 and 'uploadLimitExceeded' in reason:
-                print(f"\n  ❌ YouTube account upload limit reached.")
-                print(f"     Your account needs phone verification to upload more videos.")
-                print(f"     1. Go to: https://www.youtube.com/verify")
-                print(f"     2. Verify your account with a phone number.")
-                print(f"     3. Re-run with --resume to continue from where you left off.")
+                print(f"\n  ❌ YouTube daily upload limit reached.")
+                print(f"     You've hit YouTube's daily upload cap for this channel.")
+                print(f"     Quota resets at midnight Pacific Time — re-run tomorrow with --resume.")
                 print(f"     Progress saved ({len(uploaded)} videos uploaded).")
                 print(f"  📄 Progress file: {progress_file}")
                 sys.exit(1)
@@ -541,6 +539,49 @@ def print_upload_preview(video_stats, output_dir):
     print(f"\n  To upload, run the same command with --upload instead of --upload-dry-run\n")
 
 
+def load_email_config():
+    """Load Gmail credentials from ~/.youtube_upload_email.json."""
+    config_path = os.path.expanduser('~/.youtube_upload_email.json')
+    if not os.path.exists(config_path):
+        return None
+    with open(config_path) as f:
+        return json.load(f)
+
+
+def send_status_email(subject, body):
+    """Send a status email to yourself via Gmail SMTP + App Password.
+
+    Reads 'email' and 'app_password' from ~/.youtube_upload_email.json.
+    """
+    import smtplib
+    from email.mime.text import MIMEText
+
+    config = load_email_config()
+    if not config:
+        print("  ⚠️  Email notification skipped — ~/.youtube_upload_email.json not found")
+        return
+
+    gmail = config.get('email')
+    app_password = config.get('app_password')
+    if not gmail or not app_password:
+        print("  ⚠️  Email notification skipped — missing 'email' or 'app_password' in config")
+        return
+
+    msg = MIMEText(body, 'plain')
+    msg['From'] = gmail
+    msg['To'] = gmail
+    msg['Subject'] = subject
+
+    try:
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(gmail, app_password)
+            server.send_message(msg)
+        print(f"  📧 Status email sent to {gmail}")
+    except Exception as e:
+        print(f"  ⚠️  Failed to send email notification: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Organize videos (and photos) by year for YouTube upload',
@@ -589,6 +630,8 @@ Examples:
                         help='Path to Google OAuth client_secrets.json (default: ./client_secrets.json)')
     parser.add_argument('--resume', action='store_true',
                         help='Resume a previously interrupted upload session')
+    parser.add_argument('--notify-email', action='store_true',
+                        help='Send a Gmail status notification after upload completes (reads credentials from ~/.youtube_upload_email.json)')
     
     args = parser.parse_args()
     
@@ -712,8 +755,64 @@ Examples:
     if args.upload and video_stats:
         client_secrets = os.path.expanduser(args.client_secrets)
         progress_file = os.path.join(video_output, 'upload_progress.json')
+
+        # Snapshot count before this session for the email summary
+        count_before = 0
+        if os.path.exists(progress_file):
+            with open(progress_file) as f:
+                count_before = len(json.load(f))
+
+        total_videos = sum(s['count'] for s in video_stats.values())
         youtube = get_youtube_service(client_secrets)
-        upload_all_videos(youtube, video_stats, video_output, progress_file, resume=args.resume)
+        exit_status = 'success'
+        exit_note = ''
+        try:
+            upload_all_videos(youtube, video_stats, video_output, progress_file, resume=args.resume)
+        except SystemExit:
+            exit_status = 'stopped'
+            exit_note = 'Upload stopped early — quota exceeded or fatal error. Check the log for details.'
+            raise
+        finally:
+            if args.notify_email:
+                # Read final progress
+                if os.path.exists(progress_file):
+                    with open(progress_file) as f:
+                        uploaded = json.load(f)
+                else:
+                    uploaded = {}
+                count_after = len(uploaded)
+                uploaded_today = count_after - count_before
+                year_counts = {}
+                for v in uploaded.values():
+                    year_counts[v['year']] = year_counts.get(v['year'], 0) + 1
+                pct = int(100 * count_after / total_videos) if total_videos else 0
+                run_time = datetime.now().strftime('%b %-d, %Y at %-I:%M %p')
+                status_label = 'Completed' if exit_status == 'success' else 'Stopped early'
+                status_icon = '✅' if exit_status == 'success' else '⚠️'
+                remaining = total_videos - count_after
+
+                subject = (
+                    f"{status_icon} YouTube Upload — {uploaded_today} video(s) uploaded "
+                    f"({count_after}/{total_videos} total)"
+                )
+                lines = [
+                    f"YouTube Upload Status — {run_time}",
+                    "",
+                    f"Status:          {status_label}",
+                    f"Uploaded today:  {uploaded_today} video(s)",
+                    f"Total so far:    {count_after} / {total_videos} ({pct}%)",
+                    "",
+                    "Breakdown by year:",
+                ]
+                for yr in sorted(year_counts):
+                    lines.append(f"  {yr}: {year_counts[yr]} videos")
+                if exit_note:
+                    lines += ["", f"Note: {exit_note}"]
+                if remaining > 0:
+                    lines += ["", f"Remaining: {remaining} video(s) — will continue tomorrow at 1:00 PM with --resume"]
+                else:
+                    lines += ["", "All videos uploaded!"]
+                send_status_email(subject, "\n".join(lines))
     
     # Export report if requested
     if args.export_report:

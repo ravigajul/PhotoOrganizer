@@ -76,6 +76,7 @@ Progress is saved to `upload_progress.json` in the output folder after each vide
 | `--upload` | Upload organized videos to YouTube |
 | `--upload-dry-run` | Preview upload plan without uploading |
 | `--resume` | Skip already-uploaded videos (uses progress file) |
+| `--notify-email` | Send a Gmail status email after upload (reads credentials from `~/.youtube_upload_email.json`) |
 | `--client-secrets PATH` | Path to `client_secrets.json` (default: `./client_secrets.json`) |
 | `--output-dir PATH` | Where to write organized files (default: `~/Desktop/YouTube_Upload`) |
 | `--export-report` | Save a JSON report of all organized files |
@@ -86,20 +87,27 @@ Since uploading 1,000+ videos takes multiple days due to YouTube's API quota, th
 
 ### How it works
 
-1. **`run_upload.sh`** — a shell script that runs the resume command and appends output to a log file
-2. **`~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist`** — a macOS LaunchAgent that tells the OS to run the script daily at 1 PM
+**`~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist`** — a macOS LaunchAgent that tells the OS to run the upload script daily at 1 PM.
 
-The LaunchAgent is loaded into launchd (macOS's service manager) and persists across reboots. Each day at 1 PM, it calls `run_upload.sh`, which resumes from where the previous day left off using the `--resume` flag and the saved `upload_progress.json`.
+The LaunchAgent is loaded into launchd (macOS's service manager) and persists across reboots. Each day at 1 PM, it runs the script with `--resume`, picking up from where the previous day left off using the saved `upload_progress.json`. A Gmail status email is sent after each run via `--notify-email`.
 
 ### One-time setup
 
 ```bash
-# Make the script executable
-chmod +x /path/to/PhotoOrganizer/run_upload.sh
-
 # Load the LaunchAgent (registers it with macOS)
-launchctl load ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
+launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
 ```
+
+To receive daily email notifications, create `~/.youtube_upload_email.json`:
+
+```json
+{
+  "email": "your@gmail.com",
+  "app_password": "xxxx xxxx xxxx xxxx"
+}
+```
+
+Generate a Gmail App Password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords). Set file permissions so only you can read it: `chmod 600 ~/.youtube_upload_email.json`.
 
 ### Manage the schedule
 
@@ -108,32 +116,32 @@ launchctl load ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
 launchctl list | grep youtube-upload
 
 # Trigger a manual run immediately (for testing)
-launchctl start com.yourname.youtube-upload
+launchctl start com.ravigajul.youtube-upload
 
 # Stop and unload the schedule (disables daily runs)
-launchctl unload ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
+launchctl unload ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
 
 # Re-enable it
-launchctl load ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
+launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
 ```
 
 ### Logs
 
-Each run appends to `~/Desktop/YouTube_Upload/upload.log`:
+Each run writes to `~/Desktop/YouTube_Upload/launchd.log`:
 
 ```bash
-tail -f ~/Desktop/YouTube_Upload/upload.log
+tail -f ~/Desktop/YouTube_Upload/launchd.log
 ```
 
 > **Note:** The Mac must be awake at 1 PM for the job to trigger. If it is asleep, macOS will not catch up on missed runs — the next trigger will be the following day at 1 PM.
 
 ### Change the scheduled time
 
-Edit the plist file at `~/Library/LaunchAgents/com.yourname.youtube-upload.plist` and update the `Hour` value (24-hour format), then reload:
+Edit the plist file at `~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist` and update the `Hour` value (24-hour format), then reload:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
-launchctl load  ~/Library/LaunchAgents/com.yourname.youtube-upload.plist
+launchctl unload ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
+launchctl load  ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
 ```
 
 ## YouTube Quota

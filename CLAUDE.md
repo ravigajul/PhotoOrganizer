@@ -85,6 +85,36 @@ cd /Users/ravigajul/Downloads/PhotoOrganizer
 YouTube API allows ~6 uploads/minute. With 1308 videos, expect 2-3 days total.
 If you hit quota, the script saves progress automatically — just re-run with `--resume` the next day.
 
+## Email notifications
+
+After each scheduled run, a status email is sent to the configured Gmail address.
+
+### Credentials file (not committed)
+`~/.youtube_upload_email.json`:
+```json
+{
+  "email": "your@gmail.com",
+  "app_password": "xxxx xxxx xxxx xxxx"
+}
+```
+
+### Send a test email
+```bash
+cd /Users/ravigajul/Downloads/PhotoOrganizer
+.venv/bin/python3 - << 'EOF'
+from organize_videos_for_youtube import send_status_email
+send_status_email("Test", "This is a test notification.")
+EOF
+```
+
+### Enable in manual runs
+Add `--notify-email` to any `--upload` command:
+```bash
+.venv/bin/python3 organize_videos_for_youtube.py ~/Desktop/MyKidsMedia --videos-only --upload --resume --notify-email
+```
+
+---
+
 ## Troubleshooting
 - **"client_secrets.json not found"** — make sure the file is in `/Users/ravigajul/Downloads/PhotoOrganizer/`
 - **"quota exceeded"** — wait 24 hours, then re-run with `--resume`

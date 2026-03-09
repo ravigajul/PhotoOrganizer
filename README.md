@@ -83,7 +83,7 @@ Progress is saved to `upload_progress.json` in the output folder after each vide
 
 ## Daily Scheduled Upload (macOS)
 
-Since uploading 1,000+ videos takes multiple days due to YouTube's API quota, the project includes a launchd setup to automatically resume the upload every day at **1:00 PM**.
+Since uploading 1,000+ videos takes multiple days due to YouTube's API quota, the project includes a launchd setup to automatically resume the upload every day at **10:45 AM**.
 
 ### How it works
 

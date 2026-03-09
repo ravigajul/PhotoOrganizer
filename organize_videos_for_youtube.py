@@ -882,7 +882,7 @@ Examples:
                 if exit_note:
                     lines += ["", f"Note: {exit_note}"]
                 if remaining > 0:
-                    lines += ["", f"Remaining: {remaining} video(s) — will continue tomorrow at 1:00 PM with --resume"]
+                    lines += ["", f"Remaining: {remaining} video(s) — will continue tomorrow at 10:45 AM with --resume"]
                 else:
                     lines += ["", "All videos uploaded!"]
                 send_status_email(subject, "\n".join(lines))

@@ -382,8 +382,7 @@ def upload_video(youtube, filepath, title, playlist_id):
         body={
             'snippet': {'title': title},
             'status': {
-                'privacyStatus': 'unlisted',
-                'selfDeclaredMadeForKids': True
+                'privacyStatus': 'unlisted'
             }
         },
         media_body=media
@@ -407,6 +406,41 @@ def upload_video(youtube, filepath, title, playlist_id):
     ).execute()
 
     return video_id
+
+
+def verify_and_clean_progress(youtube, uploaded, progress_file):
+    """Check all tracked video IDs actually exist on YouTube.
+
+    When YouTube hits an upload limit it sometimes silently removes recently
+    uploaded videos. This scans the progress file, drops any ghost entries,
+    and re-saves so the next run will re-upload the missing ones.
+    """
+    if not uploaded:
+        return
+
+    all_keys = list(uploaded.keys())
+    all_video_ids = [uploaded[k]['video_id'] for k in all_keys]
+
+    found_ids = set()
+    for i in range(0, len(all_video_ids), 50):
+        batch = all_video_ids[i:i + 50]
+        try:
+            resp = youtube.videos().list(part='status', id=','.join(batch)).execute()
+            for item in resp.get('items', []):
+                found_ids.add(item['id'])
+        except Exception:
+            return  # If the check itself fails, leave progress untouched
+
+    missing_keys = [k for k in all_keys if uploaded[k]['video_id'] not in found_ids]
+    if missing_keys:
+        print(f"\n  ⚠️  {len(missing_keys)} video(s) were accepted by YouTube but are no longer there.")
+        print(f"     Removing them from progress so they will be re-uploaded:\n")
+        for k in missing_keys:
+            print(f"       - {uploaded[k]['title']}")
+            del uploaded[k]
+        with open(progress_file, 'w') as f:
+            json.dump(uploaded, f, indent=2)
+        print(f"\n     Progress file updated — these will be re-uploaded on the next run.")
 
 
 def _exit_on_api_error(e, progress_file, uploaded):
@@ -447,6 +481,25 @@ def _exit_on_api_error(e, progress_file, uploaded):
         pass
 
 
+def load_skip_list(progress_file):
+    """Load the list of filenames permanently skipped due to policy violations."""
+    skip_file = progress_file.replace('upload_progress.json', 'upload_skipped.json')
+    if os.path.exists(skip_file):
+        with open(skip_file) as f:
+            return json.load(f), skip_file
+    return {}, skip_file
+
+
+def save_to_skip_list(filename, title, reason, skip_file, skipped):
+    """Permanently skip a video — it will never be retried."""
+    skipped[filename] = {'title': title, 'reason': reason, 'skipped_at': datetime.now().isoformat()}
+    with open(skip_file, 'w') as f:
+        json.dump(skipped, f, indent=2)
+    print(f"  🚫 Permanently skipped: {title}")
+    print(f"     Reason: {reason}")
+    print(f"     (Added to upload_skipped.json — will not be retried)")
+
+
 def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=False):
     """Upload all organized videos to YouTube, with resume support."""
     from googleapiclient.errors import HttpError
@@ -456,6 +509,10 @@ def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=Fa
         with open(progress_file) as f:
             uploaded = json.load(f)
         print(f"  ↩️  Resuming — {len(uploaded)} videos already uploaded\n")
+
+    skipped, skip_file = load_skip_list(progress_file)
+    if skipped:
+        print(f"  🚫 {len(skipped)} video(s) permanently skipped (policy violations — see upload_skipped.json)\n")
 
     total = sum(s['count'] for s in video_stats.values())
     done = len(uploaded)
@@ -480,6 +537,9 @@ def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=Fa
             if filename in uploaded:
                 done += 1
                 continue
+            if filename in skipped:
+                done += 1
+                continue
 
             filepath = year_dir / filename
             if not filepath.exists():
@@ -500,6 +560,19 @@ def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=Fa
                     json.dump(uploaded, f, indent=2)
                 time.sleep(1)  # Gentle rate limiting
             except HttpError as e:
+                # Check for policy violation — skip permanently rather than retrying
+                try:
+                    details = json.loads(e.content.decode())
+                    reason = details.get('error', {}).get('errors', [{}])[0].get('reason', '')
+                    message = details.get('error', {}).get('message', '')
+                except Exception:
+                    reason, message = '', str(e)
+
+                if 'policyViolation' in reason or 'childSafety' in reason or (e.resp.status == 400 and 'policy' in message.lower()):
+                    save_to_skip_list(filename, title, message or reason, skip_file, skipped)
+                    continue
+
+                verify_and_clean_progress(youtube, uploaded, progress_file)
                 _exit_on_api_error(e, progress_file, uploaded)
                 print(f"         ⚠️  Upload failed (HTTP {e.resp.status}): {e}")
                 sys.exit(1)
@@ -535,7 +608,7 @@ def print_upload_preview(video_stats, output_dir):
 
     print(f"\n  {'─' * 58}")
     print(f"  Total: {total_videos} videos  ({format_size(total_bytes)})  across {len(video_stats)} playlists")
-    print(f"  Visibility: Unlisted  |  Made for kids: Yes")
+    print(f"  Visibility: Unlisted")
     print(f"\n  To upload, run the same command with --upload instead of --upload-dry-run\n")
 
 

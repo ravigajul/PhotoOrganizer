@@ -551,6 +551,150 @@ def screen_video_for_nudity(filepath, creds, max_frames=8):
     return False, ''
 
 
+RETRY_PLIST_LABEL = 'com.ravigajul.youtube-upload-retry'
+RETRY_PLIST_PATH = os.path.expanduser(
+    f'~/Library/LaunchAgents/{RETRY_PLIST_LABEL}.plist'
+)
+MAIN_PLIST_SCHEDULE = (10, 45)  # hour, minute of the regular daily run
+
+
+def _meta_file(progress_file):
+    return progress_file.replace('upload_progress.json', 'upload_meta.json')
+
+
+def record_session_end(progress_file):
+    """Stamp the current time as the end of this upload session."""
+    meta = _meta_file(progress_file)
+    data = {}
+    if os.path.exists(meta):
+        with open(meta) as f:
+            data = json.load(f)
+    data['last_session_ended_at'] = datetime.now().isoformat()
+    with open(meta, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+def get_last_session_end(progress_file):
+    """Return datetime of last session end, or None."""
+    meta = _meta_file(progress_file)
+    if not os.path.exists(meta):
+        return None
+    try:
+        with open(meta) as f:
+            val = json.load(f).get('last_session_ended_at')
+        return datetime.fromisoformat(val) if val else None
+    except Exception:
+        return None
+
+
+def cleanup_retry_plist():
+    """Unload and delete the one-shot retry plist if it exists."""
+    import subprocess
+    if os.path.exists(RETRY_PLIST_PATH):
+        subprocess.run(['launchctl', 'unload', RETRY_PLIST_PATH],
+                       capture_output=True)
+        os.remove(RETRY_PLIST_PATH)
+
+
+def schedule_retry_launchd(run_at):
+    """Create and load a one-shot launchd plist to retry at *run_at*."""
+    import subprocess
+    script = os.path.abspath(__file__)
+    venv_python = os.path.join(os.path.dirname(script), '.venv', 'bin', 'python3')
+    source = os.path.expanduser('~/Desktop/MyKidsMedia')
+
+    plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{RETRY_PLIST_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{venv_python}</string>
+        <string>{script}</string>
+        <string>{source}</string>
+        <string>--videos-only</string>
+        <string>--upload</string>
+        <string>--resume</string>
+        <string>--notify-email</string>
+        <string>--screen-nudity</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Month</key>  <integer>{run_at.month}</integer>
+        <key>Day</key>    <integer>{run_at.day}</integer>
+        <key>Hour</key>   <integer>{run_at.hour}</integer>
+        <key>Minute</key> <integer>{run_at.minute}</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>{os.path.expanduser('~/Desktop/YouTube_Upload/launchd.log')}</string>
+    <key>StandardErrorPath</key>
+    <string>{os.path.expanduser('~/Desktop/YouTube_Upload/launchd.log')}</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>"""
+
+    cleanup_retry_plist()  # Remove any previous one-shot first
+    with open(RETRY_PLIST_PATH, 'w') as f:
+        f.write(plist)
+    subprocess.run(['launchctl', 'load', RETRY_PLIST_PATH], capture_output=True)
+
+
+def check_upload_window(progress_file, notify_email=False):
+    """Check whether 24 h have elapsed since the last session.
+
+    If not enough time has passed:
+      - Computes retry_time = last_end + 24 h + 5 min
+      - If retry_time falls before the next regular 10:45 AM run, schedules
+        a one-shot launchd retry and returns False (caller should exit).
+      - If the regular schedule will fire first, just returns False (no plist needed).
+
+    Returns True if it is safe to proceed with uploading.
+    """
+    last_end = get_last_session_end(progress_file)
+    if last_end is None:
+        return True  # First ever run — no history
+
+    from datetime import timedelta
+    elapsed_h = (datetime.now() - last_end).total_seconds() / 3600
+    if elapsed_h >= 23.5:  # 30-min grace buffer
+        return True
+
+    retry_time = last_end + timedelta(hours=24, minutes=5)
+    now = datetime.now()
+
+    # Next regular 10:45 AM run
+    next_regular = now.replace(hour=MAIN_PLIST_SCHEDULE[0],
+                               minute=MAIN_PLIST_SCHEDULE[1],
+                               second=0, microsecond=0)
+    if next_regular <= now:
+        from datetime import timedelta as _td
+        next_regular += _td(days=1)
+
+    wait_h = (retry_time - now).total_seconds() / 3600
+    print(f"\n  ⏰ Only {elapsed_h:.1f}h since last upload session (need 24h).")
+
+    if retry_time < next_regular:
+        schedule_retry_launchd(retry_time)
+        msg = (f"     Quota window not open yet — retry scheduled for "
+               f"{retry_time.strftime('%b %-d at %-I:%M %p')} "
+               f"({wait_h:.1f}h from now).\n")
+        print(msg)
+        if notify_email:
+            send_status_email(
+                "⏰ YouTube Upload — retry rescheduled",
+                f"Upload skipped: only {elapsed_h:.1f}h since last session.\n"
+                f"Retry scheduled for {retry_time.strftime('%b %-d, %Y at %-I:%M %p')}."
+            )
+    else:
+        print(f"     Regular 10:45 AM run will fire before the window opens — no retry needed.\n")
+
+    return False
+
+
 def load_skip_list(progress_file):
     """Load the list of filenames permanently skipped due to policy violations."""
     skip_file = progress_file.replace('upload_progress.json', 'upload_skipped.json')
@@ -925,6 +1069,11 @@ Examples:
                 count_before = len(json.load(f))
 
         total_videos = sum(s['count'] for s in video_stats.values())
+
+        # Guard: don't start if we're still inside the 24h quota window
+        if not check_upload_window(progress_file, notify_email=args.notify_email):
+            sys.exit(0)
+
         youtube, creds = get_youtube_service(client_secrets)
         exit_status = 'success'
         exit_note = ''
@@ -935,6 +1084,9 @@ Examples:
             exit_note = 'Upload stopped early — quota exceeded or fatal error. Check the log for details.'
             raise
         finally:
+            # Always stamp session end time and remove any stale retry plist
+            record_session_end(progress_file)
+            cleanup_retry_plist()
             if args.notify_email:
                 # Read final progress
                 if os.path.exists(progress_file):
@@ -971,7 +1123,9 @@ Examples:
                 if exit_note:
                     lines += ["", f"Note: {exit_note}"]
                 if remaining > 0:
-                    lines += ["", f"Remaining: {remaining} video(s) — will continue tomorrow at 10:45 AM with --resume"]
+                    from datetime import timedelta
+                    next_run = datetime.now() + timedelta(hours=24, minutes=5)
+                    lines += ["", f"Remaining: {remaining} video(s) — next attempt ~{next_run.strftime('%b %-d at %-I:%M %p')} (auto-rescheduled if within quota window)"]
                 else:
                     lines += ["", "All videos uploaded!"]
                 send_status_email(subject, "\n".join(lines))

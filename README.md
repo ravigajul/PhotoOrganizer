@@ -1,16 +1,18 @@
 # PhotoOrganizer — Kids Video Organizer & YouTube Uploader
 
-Organizes photos/videos exported from Mac Photos into year-based folders, then automatically uploads them to YouTube with proper metadata (title, made-for-kids, unlisted visibility, year playlists).
+Organizes photos/videos exported from Mac Photos into year-based folders, then automatically uploads them to YouTube with proper metadata (title, unlisted visibility, year playlists). Pre-screens videos for nudity before uploading and auto-reschedules around YouTube's 24-hour quota window.
 
 ## Features
 
 - Organizes videos and photos into `YYYY/` subfolders by creation date
 - Renames files with a `YYYY-MM-DD_` date prefix for easy sorting
 - Uploads videos to YouTube via the YouTube Data API v3:
-  - Auto-creates yearly playlists (e.g. "My Videos 2024")
-  - Sets title from filename + date (e.g. "Jun 1, 2024 - birthday party")
-  - Marks all videos as **Unlisted** and **Made for Kids**
+  - Auto-creates yearly playlists (e.g. "Aarav's Videos 2024")
+  - Sets title from filename + date (e.g. "Jun 1, 2024 - IMG 8344")
+  - Marks all videos as **Unlisted**
   - Saves upload progress — resume safely after interruptions or quota limits
+  - Pre-screens each video with **Google Cloud Vision SafeSearch** — permanently skips nudity-flagged videos before upload
+  - Auto-reschedules around YouTube's 24h quota window to avoid wasting a day
 - Dry-run mode to preview everything before touching a single file
 
 ## Setup
@@ -27,9 +29,10 @@ python3 -m venv .venv
 ### 2. Google Cloud / YouTube API credentials
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project → enable **YouTube Data API v3**
-3. Create **OAuth 2.0 credentials** (Desktop app type)
-4. Download the JSON file → save as `client_secrets.json` in this folder
+2. Create a new project → enable **YouTube Data API v3** and **Cloud Vision API**
+3. Enable billing on the project (required for Vision API — free tier covers ~1000 images/month)
+4. Create **OAuth 2.0 credentials** (Desktop app type)
+5. Download the JSON file → save as `client_secrets.json` in this folder
 
 > `client_secrets.json` is listed in `.gitignore` and will never be committed.
 
@@ -79,8 +82,8 @@ Progress is saved to `upload_progress.json` in the output folder after each vide
 | `--notify-email` | Send a Gmail status email after upload (reads credentials from `~/.youtube_upload_email.json`) |
 | `--screen-nudity` | Pre-screen each video with Google Cloud Vision SafeSearch before uploading — flags and permanently skips videos containing nudity. Requires Cloud Vision API enabled + billing on your GCP project. |
 | `--client-secrets PATH` | Path to `client_secrets.json` (default: `./client_secrets.json`) |
-| `--output-dir PATH` | Where to write organized files (default: `~/Desktop/YouTube_Upload`) |
-| `--export-report` | Save a JSON report of all organized files |
+| `--output PATH` | Where to write organised files (default: `~/Desktop/YouTube_Upload`) |
+| `--export-report` | Save a JSON report of all organised files |
 
 ## Daily Scheduled Upload (macOS)
 
@@ -147,12 +150,15 @@ launchctl load  ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
 
 ## YouTube Quota
 
-The YouTube Data API has a daily quota (~10,000 units/day, ~6 uploads/day by default). If you hit the limit, the script saves progress automatically. Re-run with `--resume` after midnight Pacific time when the quota resets.
+The YouTube Data API has a daily quota (~10,000 units/day, ~6 uploads/day by default). Each upload costs ~1,650 units (`videos.insert` = 1,600 + `playlistItems.insert` = 50).
+
+If you hit the limit, the script saves progress automatically and **auto-reschedules** a one-shot retry for exactly 24 hours after the previous session ended — so you never waste a day waiting for the window to reopen.
 
 To request a higher quota: [console.cloud.google.com → YouTube Data API v3 → Quotas → Request higher quota](https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas)
 
 ## Notes
 
 - This script **never deletes or moves your original files** — it only reads them
-- Organized files are copies placed in the output directory
+- By default, organised files are **symlinks** (no extra disk space). Use `--copy` to duplicate or `--move` to relocate
 - `client_secrets.json` and `upload_progress.json` are gitignored
+- Flagged/skipped videos are recorded in `upload_skipped.json` — delete an entry to retry that video

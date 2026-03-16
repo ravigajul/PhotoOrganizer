@@ -95,6 +95,20 @@ Since uploading 1,000+ videos takes multiple days due to YouTube's API quota, th
 
 The LaunchAgent is loaded into launchd (macOS's service manager) and persists across reboots. Each day at 10:45 AM, it runs the script with `--resume`, picking up from where the previous day left off using the saved `upload_progress.json`. A Gmail status email is sent after each run via `--notify-email`. Videos are pre-screened for nudity via `--screen-nudity` before uploading.
 
+### Auto-rescheduling within the 24h quota window
+
+YouTube's upload limit is a rolling 24-hour window. If yesterday's run ended at 2 PM and the script fires at 10:45 AM the next day (only ~21h later), it would hit the limit immediately and waste the day.
+
+The script handles this automatically:
+
+1. After every run it stamps the session end time to `upload_meta.json`
+2. At startup it checks how much time has elapsed since the last session
+3. If less than 24h have passed, it calculates `last_end + 24h 5min` as the retry time
+4. If that retry time falls before the next regular 10:45 AM run, it creates a one-shot LaunchAgent (`com.ravigajul.youtube-upload-retry.plist`) that fires at exactly the right time
+5. Once the retry fires and completes, the one-shot plist is automatically deleted
+
+A status email is sent whenever a retry is scheduled so you know what's happening.
+
 ### One-time setup
 
 ```bash

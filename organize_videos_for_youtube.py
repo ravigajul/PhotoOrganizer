@@ -322,7 +322,8 @@ def get_youtube_service(client_secrets_path):
         sys.exit(1)
 
     SCOPES = ['https://www.googleapis.com/auth/youtube.upload',
-              'https://www.googleapis.com/auth/youtube']
+              'https://www.googleapis.com/auth/youtube',
+              'https://www.googleapis.com/auth/cloud-platform']
     token_path = os.path.expanduser('~/.youtube_upload_token.json')
     creds = None
 
@@ -342,7 +343,7 @@ def get_youtube_service(client_secrets_path):
         with open(token_path, 'w') as f:
             f.write(creds.to_json())
 
-    return build('youtube', 'v3', credentials=creds)
+    return build('youtube', 'v3', credentials=creds), creds
 
 
 def get_or_create_playlist(youtube, year):
@@ -481,6 +482,75 @@ def _exit_on_api_error(e, progress_file, uploaded):
         pass
 
 
+def screen_video_for_nudity(filepath, creds, max_frames=8):
+    """Sample frames from a video and check for nudity using Google Cloud Vision SafeSearch.
+
+    Extracts up to *max_frames* frames evenly spaced, runs SafeSearch on each via
+    the Vision API (same GCP project / OAuth credentials as YouTube), and returns
+    (flagged, detail_str).  Flags if any frame scores LIKELY or VERY_LIKELY for
+    'adult' or 'racy' content — matching roughly what YouTube's own pipeline checks.
+    """
+    import subprocess
+    import tempfile
+    from google.cloud import vision as gv
+    from google.oauth2.credentials import Credentials as _Creds
+
+    # Build a Vision client using the same OAuth token
+    vision_client = gv.ImageAnnotatorClient(credentials=creds)
+
+    # Likelihood levels we consider a flag (LIKELY=4, VERY_LIKELY=5)
+    FLAG_THRESHOLD = gv.Likelihood.LIKELY
+
+    # Get video duration via ffprobe
+    probe = subprocess.run(
+        ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(filepath)],
+        capture_output=True, text=True
+    )
+    try:
+        duration = float(json.loads(probe.stdout)['format']['duration'])
+    except Exception:
+        duration = 60.0
+
+    interval = max(1.0, duration / max_frames)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cmd = [
+            'ffmpeg', '-i', str(filepath),
+            '-vf', f'fps=1/{interval:.2f}',
+            '-frames:v', str(max_frames),
+            f'{tmpdir}/frame_%04d.jpg',
+            '-hide_banner', '-loglevel', 'error'
+        ]
+        try:
+            subprocess.run(cmd, check=True, timeout=120)
+        except Exception as e:
+            print(f"  ⚠️  Frame extraction failed for {filepath.name}: {e}")
+            return False, ''
+
+        frames = sorted(Path(tmpdir).glob('*.jpg'))
+        if not frames:
+            return False, ''
+
+        for frame in frames:
+            try:
+                with open(frame, 'rb') as fh:
+                    image = gv.Image(content=fh.read())
+                result = vision_client.safe_search_detection(image=image)
+                safe = result.safe_search_annotation
+                if safe.adult >= FLAG_THRESHOLD:
+                    return True, f'adult content detected (frame {frame.name})'
+                if safe.racy >= FLAG_THRESHOLD:
+                    return True, f'racy content detected (frame {frame.name})'
+            except Exception as e:
+                err_str = str(e)
+                if 'BILLING_DISABLED' in err_str or 'billing' in err_str.lower():
+                    return None, 'billing_disabled'
+                # Other transient errors — skip this frame, continue
+                continue
+
+    return False, ''
+
+
 def load_skip_list(progress_file):
     """Load the list of filenames permanently skipped due to policy violations."""
     skip_file = progress_file.replace('upload_progress.json', 'upload_skipped.json')
@@ -500,7 +570,7 @@ def save_to_skip_list(filename, title, reason, skip_file, skipped):
     print(f"     (Added to upload_skipped.json — will not be retried)")
 
 
-def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=False):
+def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=False, screen_nudity=False, creds=None):
     """Upload all organized videos to YouTube, with resume support."""
     from googleapiclient.errors import HttpError
 
@@ -552,6 +622,22 @@ def upload_all_videos(youtube, video_stats, output_dir, progress_file, resume=Fa
             done += 1
 
             print(f"  [{done:>{len(str(total))}}/{total}]  {title}  ({size})")
+
+            if screen_nudity:
+                print(f"        🔍 Screening for nudity...", end='', flush=True)
+                flagged, detail = screen_video_for_nudity(filepath, creds)
+                if flagged is None:
+                    if detail == 'billing_disabled':
+                        print(f"\n\n  ⚠️  Google Cloud Vision API requires billing to be enabled.")
+                        print(f"     Enable billing at: https://console.cloud.google.com/billing/enable?project=1030325330707")
+                        print(f"     Nudity screening disabled for this session — uploads will continue unscreened.\n")
+                    screen_nudity = False  # disable for rest of session
+                elif flagged:
+                    print(f"  FLAGGED — {detail}")
+                    save_to_skip_list(filename, title, f'nudity_prescreened: {detail}', skip_file, skipped)
+                    continue
+                else:
+                    print(f"  OK")
 
             try:
                 video_id = upload_video(youtube, filepath, title, playlist_id)
@@ -705,6 +791,9 @@ Examples:
                         help='Resume a previously interrupted upload session')
     parser.add_argument('--notify-email', action='store_true',
                         help='Send a Gmail status notification after upload completes (reads credentials from ~/.youtube_upload_email.json)')
+    parser.add_argument('--screen-nudity', action='store_true',
+                        help='Pre-screen each video for nudity before uploading (uses NudeNet + ffmpeg). '
+                             'Flagged videos are added to upload_skipped.json and never uploaded.')
     
     args = parser.parse_args()
     
@@ -836,11 +925,11 @@ Examples:
                 count_before = len(json.load(f))
 
         total_videos = sum(s['count'] for s in video_stats.values())
-        youtube = get_youtube_service(client_secrets)
+        youtube, creds = get_youtube_service(client_secrets)
         exit_status = 'success'
         exit_note = ''
         try:
-            upload_all_videos(youtube, video_stats, video_output, progress_file, resume=args.resume)
+            upload_all_videos(youtube, video_stats, video_output, progress_file, resume=args.resume, screen_nudity=args.screen_nudity, creds=creds)
         except SystemExit:
             exit_status = 'stopped'
             exit_note = 'Upload stopped early — quota exceeded or fatal error. Check the log for details.'

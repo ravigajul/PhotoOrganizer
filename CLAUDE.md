@@ -1,5 +1,14 @@
 # PhotoOrganizer — Project Context
 
+## Self-learning rule
+After every session where something new is learned — a bug fixed, a decision made, a preference stated, a gotcha discovered — update the relevant memory file in:
+`~/.claude/projects/-Users-ravigajul-Downloads-PhotoOrganizer/memory/`
+
+- New tool/API decision → `project_state.md`
+- New file path or credential → `infrastructure.md`
+- User correction or preference → `feedback.md`
+- Keep `MEMORY.md` as a lean index only (no content, just pointers)
+
 ## What this project does
 Organizes kids videos from Mac Photos export into year folders and uploads them to YouTube automatically.
 
@@ -54,6 +63,25 @@ else:
 cd /Users/ravigajul/Downloads/PhotoOrganizer
 .venv/bin/python3 organize_videos_for_youtube.py ~/Desktop/MyKidsMedia --videos-only --upload --resume
 ```
+
+### Resume with nudity pre-screening (recommended)
+```bash
+cd /Users/ravigajul/Downloads/PhotoOrganizer
+.venv/bin/python3 organize_videos_for_youtube.py ~/Desktop/MyKidsMedia --videos-only --upload --resume --screen-nudity
+```
+
+#### One-time setup for --screen-nudity
+1. Enable the Cloud Vision API in your GCP project:
+   https://console.cloud.google.com/apis/library/vision.googleapis.com?project=KidsVideosUploader
+2. Delete the cached OAuth token so it re-auths with the new scope:
+   ```bash
+   rm ~/.youtube_upload_token.json
+   ```
+3. Run once interactively (browser will open for re-auth):
+   ```bash
+   .venv/bin/python3 organize_videos_for_youtube.py ~/Desktop/MyKidsMedia --videos-only --upload --resume --screen-nudity
+   ```
+4. After that, the launchd schedule runs fully unattended.
 
 ### Start a fresh upload (first time)
 ```bash

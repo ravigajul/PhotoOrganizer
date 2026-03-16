@@ -77,6 +77,7 @@ Progress is saved to `upload_progress.json` in the output folder after each vide
 | `--upload-dry-run` | Preview upload plan without uploading |
 | `--resume` | Skip already-uploaded videos (uses progress file) |
 | `--notify-email` | Send a Gmail status email after upload (reads credentials from `~/.youtube_upload_email.json`) |
+| `--screen-nudity` | Pre-screen each video with Google Cloud Vision SafeSearch before uploading — flags and permanently skips videos containing nudity. Requires Cloud Vision API enabled + billing on your GCP project. |
 | `--client-secrets PATH` | Path to `client_secrets.json` (default: `./client_secrets.json`) |
 | `--output-dir PATH` | Where to write organized files (default: `~/Desktop/YouTube_Upload`) |
 | `--export-report` | Save a JSON report of all organized files |
@@ -87,9 +88,9 @@ Since uploading 1,000+ videos takes multiple days due to YouTube's API quota, th
 
 ### How it works
 
-**`~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist`** — a macOS LaunchAgent that tells the OS to run the upload script daily at 1 PM.
+**`~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist`** — a macOS LaunchAgent that tells the OS to run the upload script daily at **10:45 AM**.
 
-The LaunchAgent is loaded into launchd (macOS's service manager) and persists across reboots. Each day at 1 PM, it runs the script with `--resume`, picking up from where the previous day left off using the saved `upload_progress.json`. A Gmail status email is sent after each run via `--notify-email`.
+The LaunchAgent is loaded into launchd (macOS's service manager) and persists across reboots. Each day at 10:45 AM, it runs the script with `--resume`, picking up from where the previous day left off using the saved `upload_progress.json`. A Gmail status email is sent after each run via `--notify-email`. Videos are pre-screened for nudity via `--screen-nudity` before uploading.
 
 ### One-time setup
 
@@ -133,7 +134,7 @@ Each run writes to `~/Desktop/YouTube_Upload/launchd.log`:
 tail -f ~/Desktop/YouTube_Upload/launchd.log
 ```
 
-> **Note:** The Mac must be awake at 1 PM for the job to trigger. If it is asleep, macOS will not catch up on missed runs — the next trigger will be the following day at 1 PM.
+> **Note:** The Mac must be awake at 10:45 AM for the job to trigger. If it is asleep, macOS will not catch up on missed runs — the next trigger will be the following day at 10:45 AM.
 
 ### Change the scheduled time
 

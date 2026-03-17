@@ -21,7 +21,7 @@ Organizes photos/videos exported from Mac Photos into year-based folders, then a
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/PhotoOrganizer.git
-cd PhotoOrganizer
+cd PhotoOrganizerCan you show me the context? 
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
@@ -104,7 +104,7 @@ The script handles this automatically:
 1. After every run it stamps the session end time to `upload_meta.json`
 2. At startup it checks how much time has elapsed since the last session
 3. If less than 24h have passed, it calculates `last_end + 24h 5min` as the retry time
-4. If that retry time falls before the next regular 10:45 AM run, it creates a one-shot LaunchAgent (`com.ravigajul.youtube-upload-retry.plist`) that fires at exactly the right time
+4. It always creates a one-shot LaunchAgent (`com.ravigajul.youtube-upload-retry.plist`) that fires at exactly the right time — even if the regular 10:45 AM run fires first (which would be too early and exit immediately)
 5. Once the retry fires and completes, the one-shot plist is automatically deleted
 
 A status email is sent whenever a retry is scheduled so you know what's happening.

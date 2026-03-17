@@ -503,7 +503,7 @@ def screen_video_for_nudity(filepath, creds, max_frames=8):
 
     # Get video duration via ffprobe
     probe = subprocess.run(
-        ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(filepath)],
+        ['/opt/homebrew/bin/ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(filepath)],
         capture_output=True, text=True
     )
     try:
@@ -515,7 +515,7 @@ def screen_video_for_nudity(filepath, creds, max_frames=8):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
-            'ffmpeg', '-i', str(filepath),
+            '/opt/homebrew/bin/ffmpeg', '-i', str(filepath),
             '-vf', f'fps=1/{interval:.2f}',
             '-frames:v', str(max_frames),
             f'{tmpdir}/frame_%04d.jpg',
@@ -677,20 +677,17 @@ def check_upload_window(progress_file, notify_email=False):
     wait_h = (retry_time - now).total_seconds() / 3600
     print(f"\n  ⏰ Only {elapsed_h:.1f}h since last upload session (need 24h).")
 
-    if retry_time < next_regular:
-        schedule_retry_launchd(retry_time)
-        msg = (f"     Quota window not open yet — retry scheduled for "
-               f"{retry_time.strftime('%b %-d at %-I:%M %p')} "
-               f"({wait_h:.1f}h from now).\n")
-        print(msg)
-        if notify_email:
-            send_status_email(
-                "⏰ YouTube Upload — retry rescheduled",
-                f"Upload skipped: only {elapsed_h:.1f}h since last session.\n"
-                f"Retry scheduled for {retry_time.strftime('%b %-d, %Y at %-I:%M %p')}."
-            )
-    else:
-        print(f"     Regular 10:45 AM run will fire before the window opens — no retry needed.\n")
+    schedule_retry_launchd(retry_time)
+    msg = (f"     Quota window not open yet — retry scheduled for "
+           f"{retry_time.strftime('%b %-d at %-I:%M %p')} "
+           f"({wait_h:.1f}h from now).\n")
+    print(msg)
+    if notify_email:
+        send_status_email(
+            "⏰ YouTube Upload — retry rescheduled",
+            f"Upload skipped: only {elapsed_h:.1f}h since last session.\n"
+            f"Retry scheduled for {retry_time.strftime('%b %-d, %Y at %-I:%M %p')}."
+        )
 
     return False
 

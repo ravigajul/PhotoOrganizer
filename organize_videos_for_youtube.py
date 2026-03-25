@@ -1071,14 +1071,18 @@ Examples:
         if not check_upload_window(progress_file, notify_email=args.notify_email):
             sys.exit(0)
 
-        youtube, creds = get_youtube_service(client_secrets)
         exit_status = 'success'
         exit_note = ''
         try:
+            youtube, creds = get_youtube_service(client_secrets)
             upload_all_videos(youtube, video_stats, video_output, progress_file, resume=args.resume, screen_nudity=args.screen_nudity, creds=creds)
         except SystemExit:
             exit_status = 'stopped'
             exit_note = 'Upload stopped early — quota exceeded or fatal error. Check the log for details.'
+            raise
+        except Exception as e:
+            exit_status = 'error'
+            exit_note = f'Fatal error: {e}'
             raise
         finally:
             # Always stamp session end time and remove any stale retry plist
@@ -1098,8 +1102,8 @@ Examples:
                     year_counts[v['year']] = year_counts.get(v['year'], 0) + 1
                 pct = int(100 * count_after / total_videos) if total_videos else 0
                 run_time = datetime.now().strftime('%b %-d, %Y at %-I:%M %p')
-                status_label = 'Completed' if exit_status == 'success' else 'Stopped early'
-                status_icon = '✅' if exit_status == 'success' else '⚠️'
+                status_label = {'success': 'Completed', 'stopped': 'Stopped early', 'error': 'Failed with error'}.get(exit_status, exit_status)
+                status_icon = '✅' if exit_status == 'success' else ('❌' if exit_status == 'error' else '⚠️')
                 remaining = total_videos - count_after
 
                 subject = (

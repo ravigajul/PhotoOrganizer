@@ -72,9 +72,29 @@ except json.JSONDecodeError as e:
 ```bash
 python3 -c "
 import json, os, sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
-token_file = os.path.expanduser('~/.youtube_upload_token.json')
+HOME = os.path.expanduser('~')
+token_file = os.path.join(HOME, '.youtube_upload_token.json')
+meta_file = os.path.join(HOME, 'Desktop/YouTube_Upload/Videos/upload_meta.json')
+
+# Check if quota window is still closed (script exits before auth in this case)
+if not os.path.exists(token_file) and os.path.exists(meta_file):
+    try:
+        d = json.load(open(meta_file))
+        last_end_str = d.get('last_session_ended_at')
+        if last_end_str:
+            last_end = datetime.fromisoformat(last_end_str)
+            elapsed_h = (datetime.now() - last_end).total_seconds() / 3600
+            if elapsed_h < 23.5:
+                retry_time = last_end + timedelta(hours=24, minutes=5)
+                print(f'ℹ️   Token not present — quota window not open yet (last session: {elapsed_h:.1f}h ago)')
+                print(f'    Script exits before auth until window opens (~{retry_time.strftime(\"%-I:%M %p\")})')
+                print(f'    This is EXPECTED — no action needed, scheduler will handle it')
+                sys.exit(0)
+    except Exception:
+        pass
+
 if not os.path.exists(token_file):
     print('❌  No token — browser auth required on first run')
     print('    FIX: Run the upload interactively once to generate the token')
@@ -84,13 +104,11 @@ try:
     d = json.load(open(token_file))
     expiry_str = d.get('token_expiry') or d.get('expiry')
     if expiry_str:
-        # Handle both formats: '2024-01-01T00:00:00Z' and '2024-01-01 00:00:00'
         expiry_str_clean = expiry_str.replace('Z', '+00:00')
         try:
             expiry = datetime.fromisoformat(expiry_str_clean)
             now = datetime.now(timezone.utc)
             if expiry.tzinfo is None:
-                from datetime import timezone
                 expiry = expiry.replace(tzinfo=timezone.utc)
             if expiry < now:
                 print(f'⚠️   Token expired at {expiry_str}')
@@ -181,8 +199,9 @@ else:
 Based on all the above:
 
 - If everything is ✅ → say **"All systems go — run `/resume-upload` to start or continue uploading."**
+- If token shows `ℹ️` (quota window not open) → say **"Everything is fine — waiting for the 24h quota window to open. Scheduler will resume automatically."**
 - If `client_secrets.json` is missing → say **"Run `/setup-youtube-api` to complete first-time setup."**
-- If the token is expired/missing → say **"Delete the stale token and re-run interactively once (see Step 3 fix)."**
+- If the token is expired/missing (❌) → say **"Delete the stale token and re-run interactively once (see Step 3 fix)."**
 - If the scheduler is not loaded → say **"Load the plist with the command in Step 5."**
 - If venv packages are missing → say **"Install missing packages with the commands in Step 4."**
 

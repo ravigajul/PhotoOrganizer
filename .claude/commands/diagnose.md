@@ -1,4 +1,4 @@
-# Diagnose PhotoOrganizer Health
+ # Diagnose PhotoOrganizer Health
 
 Run a full pre-flight check on every component needed for uploads to work. Check each item in order, report pass/fail, and give the exact fix for anything broken.
 

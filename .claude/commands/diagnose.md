@@ -102,8 +102,13 @@ if not os.path.exists(token_file):
 
 try:
     d = json.load(open(token_file))
+    has_refresh = bool(d.get('refresh_token'))
     expiry_str = d.get('token_expiry') or d.get('expiry')
-    if expiry_str:
+    # expiry only reflects the short-lived access token.
+    # A refresh_token means the library auto-renews it — never flag this as broken.
+    if has_refresh:
+        print(f'✅  Token valid (refresh token present — auto-renews on each run)')
+    elif expiry_str:
         expiry_str_clean = expiry_str.replace('Z', '+00:00')
         try:
             expiry = datetime.fromisoformat(expiry_str_clean)
@@ -111,7 +116,7 @@ try:
             if expiry.tzinfo is None:
                 expiry = expiry.replace(tzinfo=timezone.utc)
             if expiry < now:
-                print(f'⚠️   Token expired at {expiry_str}')
+                print(f'⚠️   Access token expired and no refresh token — re-auth required')
                 print('    FIX: rm ~/.youtube_upload_token.json  then re-run interactively once')
             else:
                 delta = expiry - now
@@ -119,7 +124,7 @@ try:
         except Exception:
             print(f'✅  Token file exists (expiry field: {expiry_str})')
     else:
-        print('✅  Token file exists (no expiry field — likely a refresh token, OK)')
+        print('✅  Token file exists (no expiry field — OK)')
     scopes = d.get('scopes') or d.get('token_uri', '')
     print(f'    Scopes/URI hint: {str(scopes)[:80]}')
 except Exception as e:

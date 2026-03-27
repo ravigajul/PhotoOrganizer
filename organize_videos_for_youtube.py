@@ -613,6 +613,7 @@ def schedule_retry_launchd(run_at):
     <key>ProgramArguments</key>
     <array>
         <string>{venv_python}</string>
+        <string>-u</string>
         <string>{script}</string>
         <string>{source}</string>
         <string>--videos-only</string>

@@ -872,14 +872,21 @@ def send_status_email(subject, body):
     msg['To'] = gmail
     msg['Subject'] = subject
 
-    try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(gmail, app_password)
-            server.send_message(msg)
-        print(f"  📧 Status email sent to {gmail}")
-    except Exception as e:
-        print(f"  ⚠️  Failed to send email notification: {e}")
+    import time
+    last_err = None
+    for attempt in range(3):
+        try:
+            with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
+                server.starttls()
+                server.login(gmail, app_password)
+                server.send_message(msg)
+            print(f"  📧 Status email sent to {gmail}")
+            return
+        except Exception as e:
+            last_err = e
+            if attempt < 2:
+                time.sleep(15)
+    print(f"  ⚠️  Failed to send email notification after 3 attempts: {last_err}")
 
 
 def main():

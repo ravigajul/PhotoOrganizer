@@ -502,11 +502,11 @@ def screen_video_for_nudity(filepath, creds, max_frames=8):
     FLAG_THRESHOLD = gv.Likelihood.LIKELY
 
     # Get video duration via ffprobe
-    probe = subprocess.run(
-        ['/opt/homebrew/bin/ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(filepath)],
-        capture_output=True, text=True
-    )
     try:
+        probe = subprocess.run(
+            ['/opt/homebrew/bin/ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(filepath)],
+            capture_output=True, text=True, timeout=30
+        )
         duration = float(json.loads(probe.stdout)['format']['duration'])
     except Exception:
         duration = 60.0
@@ -535,7 +535,7 @@ def screen_video_for_nudity(filepath, creds, max_frames=8):
             try:
                 with open(frame, 'rb') as fh:
                     image = gv.Image(content=fh.read())
-                result = vision_client.safe_search_detection(image=image)
+                result = vision_client.safe_search_detection(image=image, timeout=30)
                 safe = result.safe_search_annotation
                 if safe.adult >= FLAG_THRESHOLD:
                     return True, f'adult content detected (frame {frame.name})'
@@ -585,6 +585,38 @@ def get_last_session_end(progress_file):
         return datetime.fromisoformat(val) if val else None
     except Exception:
         return None
+
+
+def _lock_file(progress_file):
+    return progress_file.replace('upload_progress.json', 'upload.lock')
+
+
+def acquire_upload_lock(progress_file):
+    """Write a PID lock file.  Returns True if we got the lock, False if another
+    upload instance is already running (caller should exit without uploading)."""
+    lock_path = _lock_file(progress_file)
+    if os.path.exists(lock_path):
+        try:
+            with open(lock_path) as f:
+                existing_pid = int(f.read().strip())
+            # Check if that PID is still alive
+            os.kill(existing_pid, 0)   # raises OSError if process is gone
+            print(f"\n  ⏭️  Another upload is already running (PID {existing_pid}) — skipping this trigger.\n")
+            return False
+        except (OSError, ValueError):
+            pass  # Stale lock — previous process died; we can take over
+    with open(lock_path, 'w') as f:
+        f.write(str(os.getpid()))
+    return True
+
+
+def release_upload_lock(progress_file):
+    """Remove the PID lock file (called from the finally block)."""
+    lock_path = _lock_file(progress_file)
+    try:
+        os.remove(lock_path)
+    except FileNotFoundError:
+        pass
 
 
 def cleanup_retry_plist():
@@ -1079,6 +1111,10 @@ Examples:
         if not check_upload_window(progress_file, notify_email=args.notify_email):
             sys.exit(0)
 
+        # Guard: exit silently if another upload instance is already running
+        if not acquire_upload_lock(progress_file):
+            sys.exit(0)
+
         exit_status = 'success'
         exit_note = ''
         try:
@@ -1093,8 +1129,9 @@ Examples:
             exit_note = f'Fatal error: {e}'
             raise
         finally:
-            # Always stamp session end time and remove any stale retry plist
+            # Always stamp session end time, release lock, and remove any stale retry plist
             record_session_end(progress_file)
+            release_upload_lock(progress_file)
             cleanup_retry_plist()
             if args.notify_email:
                 # Read final progress

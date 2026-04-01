@@ -1129,10 +1129,9 @@ Examples:
             exit_note = f'Fatal error: {e}'
             raise
         finally:
-            # Always stamp session end time, release lock, and remove any stale retry plist
+            # Always stamp session end time and release lock first
             record_session_end(progress_file)
             release_upload_lock(progress_file)
-            cleanup_retry_plist()
             if args.notify_email:
                 # Read final progress
                 if os.path.exists(progress_file):
@@ -1175,7 +1174,10 @@ Examples:
                 else:
                     lines += ["", "All videos uploaded!"]
                 send_status_email(subject, "\n".join(lines))
-    
+            # Unload retry plist last — launchctl unload can SIGTERM this
+            # process on macOS, so email must be sent before this runs
+            cleanup_retry_plist()
+
     # Export report if requested
     if args.export_report:
         report = {

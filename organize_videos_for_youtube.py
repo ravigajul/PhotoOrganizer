@@ -166,10 +166,10 @@ def organize_by_year(files, output_dir, mode='symlink', file_type='videos'):
             
             # Handle duplicates
             counter = 1
+            original_stem = dest.stem
+            original_suffix = dest.suffix
             while dest.exists():
-                stem = dest.stem
-                suffix = dest.suffix
-                dest = year_dir / f"{stem}_{counter}{suffix}"
+                dest = year_dir / f"{original_stem}_{counter}{original_suffix}"
                 counter += 1
             
             # Copy, move, or symlink

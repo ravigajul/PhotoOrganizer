@@ -420,7 +420,9 @@ def verify_and_clean_progress(youtube, uploaded, progress_file):
         return
 
     all_keys = list(uploaded.keys())
-    all_video_ids = [uploaded[k]['video_id'] for k in all_keys]
+    # Skip entries intentionally marked as skipped (e.g. content-filtered videos)
+    checkable_keys = [k for k in all_keys if not uploaded[k]['video_id'].startswith('SKIPPED_')]
+    all_video_ids = [uploaded[k]['video_id'] for k in checkable_keys]
 
     found_ids = set()
     for i in range(0, len(all_video_ids), 50):
@@ -432,7 +434,7 @@ def verify_and_clean_progress(youtube, uploaded, progress_file):
         except Exception:
             return  # If the check itself fails, leave progress untouched
 
-    missing_keys = [k for k in all_keys if uploaded[k]['video_id'] not in found_ids]
+    missing_keys = [k for k in checkable_keys if uploaded[k]['video_id'] not in found_ids]
     if missing_keys:
         print(f"\n  ⚠️  {len(missing_keys)} video(s) were accepted by YouTube but are no longer there.")
         print(f"     Removing them from progress so they will be re-uploaded:\n")

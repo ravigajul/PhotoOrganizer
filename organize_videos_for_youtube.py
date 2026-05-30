@@ -679,52 +679,17 @@ def schedule_retry_launchd(run_at):
 
 
 def check_upload_window(progress_file, notify_email=False):
-    """Check whether 24 h have elapsed since the last session.
+    """Return True if 23.5+ hours have elapsed since the last upload session.
 
-    If not enough time has passed:
-      - Computes retry_time = last_end + 24 h + 5 min
-      - If retry_time falls before the next regular 10:45 AM run, schedules
-        a one-shot launchd retry and returns False (caller should exit).
-      - If the regular schedule will fire first, just returns False (no plist needed).
-
-    Returns True if it is safe to proceed with uploading.
+    The schedule fires every 2 hours via StartInterval, so no retry plist is
+    needed — the next interval will naturally pick up when the window opens.
     """
     last_end = get_last_session_end(progress_file)
     if last_end is None:
         return True  # First ever run — no history
 
-    from datetime import timedelta
     elapsed_h = (datetime.now() - last_end).total_seconds() / 3600
-    if elapsed_h >= 23.5:  # 30-min grace buffer
-        return True
-
-    retry_time = last_end + timedelta(hours=24, minutes=5)
-    now = datetime.now()
-
-    # Next regular 10:45 AM run
-    next_regular = now.replace(hour=MAIN_PLIST_SCHEDULE[0],
-                               minute=MAIN_PLIST_SCHEDULE[1],
-                               second=0, microsecond=0)
-    if next_regular <= now:
-        from datetime import timedelta as _td
-        next_regular += _td(days=1)
-
-    wait_h = (retry_time - now).total_seconds() / 3600
-    print(f"\n  ⏰ Only {elapsed_h:.1f}h since last upload session (need 24h).")
-
-    schedule_retry_launchd(retry_time)
-    msg = (f"     Quota window not open yet — retry scheduled for "
-           f"{retry_time.strftime('%b %-d at %-I:%M %p')} "
-           f"({wait_h:.1f}h from now).\n")
-    print(msg)
-    if notify_email:
-        send_status_email(
-            "⏰ YouTube Upload — retry rescheduled",
-            f"Upload skipped: only {elapsed_h:.1f}h since last session.\n"
-            f"Retry scheduled for {retry_time.strftime('%b %-d, %Y at %-I:%M %p')}."
-        )
-
-    return False
+    return elapsed_h >= 23.5  # 30-min grace buffer
 
 
 def load_skip_list(progress_file):
@@ -1007,6 +972,12 @@ Examples:
         output_dir = os.path.expanduser(args.output)
     else:
         output_dir = os.path.expanduser('~/Desktop/YouTube_Upload')
+
+    # Fast-exit before slow scan if quota window not open (schedule fires every 2h)
+    if args.upload:
+        _progress_file = os.path.join(output_dir, 'Videos', 'upload_progress.json')
+        if not check_upload_window(_progress_file):
+            sys.exit(0)
     
     # Determine mode
     if args.move:

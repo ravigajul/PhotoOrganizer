@@ -466,15 +466,17 @@ def _exit_on_api_error(e, progress_file, uploaded):
                 print(f"     Quota resets at midnight Pacific Time — re-run tomorrow with --resume.")
                 print(f"     Progress saved ({len(uploaded)} videos uploaded).")
                 print(f"  📄 Progress file: {progress_file}")
-                sys.exit(1)
-            elif status == 403:
-                if 'quotaExceeded' in reason or 'dailyLimitExceeded' in reason:
+                sys.exit(0)  # Expected quota exhaustion — exit cleanly so launchd keeps scheduling
+            elif status in (403, 429):
+                if status == 429 or 'quotaExceeded' in reason or 'dailyLimitExceeded' in reason or 'rateLimitExceeded' in reason:
                     print(f"\n  ❌ YouTube API quota exceeded.")
-                    print(f"     Reason: {reason}")
+                    print(f"     Reason: {reason or 'rateLimitExceeded'}")
                     print(f"     Progress saved ({len(uploaded)} videos uploaded).")
                     print(f"     Re-run tomorrow with --resume to continue.\n")
+                    print(f"  📄 Progress file: {progress_file}")
+                    sys.exit(0)  # Expected quota exhaustion — exit cleanly so launchd keeps scheduling
                 else:
-                    print(f"\n  ❌ YouTube API returned 403 Forbidden.")
+                    print(f"\n  ❌ YouTube API returned {status} Forbidden.")
                     print(f"     {message}")
                     print(f"     Progress saved ({len(uploaded)} videos uploaded).")
                     print(f"     Fix the issue then re-run with --resume.\n")

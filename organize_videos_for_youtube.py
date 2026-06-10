@@ -666,9 +666,9 @@ def schedule_retry_launchd(run_at):
         <key>Minute</key> <integer>{run_at.minute}</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>{os.path.expanduser('~/Desktop/YouTube_Upload/launchd.log')}</string>
+    <string>{os.path.expanduser('~/Library/Logs/youtube-upload.log')}</string>
     <key>StandardErrorPath</key>
-    <string>{os.path.expanduser('~/Desktop/YouTube_Upload/launchd.log')}</string>
+    <string>{os.path.expanduser('~/Library/Logs/youtube-upload.log')}</string>
     <key>RunAtLoad</key>
     <false/>
 </dict>

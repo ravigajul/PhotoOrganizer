@@ -173,7 +173,7 @@ else:
             print('✅  Scheduler loaded, last run succeeded (exit 0)')
         else:
             print(f'⚠️   Scheduler loaded, last run FAILED (exit {code})')
-            print('    FIX: Check the log — tail -40 ~/Desktop/YouTube_Upload/launchd.log')
+            print('    FIX: Check the log — tail -40 ~/Library/Logs/youtube-upload.log')
     else:
         print('✅  Scheduler loaded')
         print(f'    Raw: {output[:120]}')

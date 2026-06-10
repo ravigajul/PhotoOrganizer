@@ -63,5 +63,5 @@ launchctl list com.ravigajul.youtube-upload 2>&1 | grep -E "LastExitStatus|Label
 `LastExitStatus = 0` means the last scheduled run was clean. If the status is non-zero, check the log:
 
 ```bash
-tail -40 ~/Desktop/YouTube_Upload/launchd.log
+tail -40 ~/Library/Logs/youtube-upload.log
 ```

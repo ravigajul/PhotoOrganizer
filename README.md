@@ -145,10 +145,10 @@ launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
 
 ### Logs
 
-Each run writes to `~/Desktop/YouTube_Upload/launchd.log`:
+Each run writes to `~/Library/Logs/youtube-upload.log`:
 
 ```bash
-tail -f ~/Desktop/YouTube_Upload/launchd.log
+tail -f ~/Library/Logs/youtube-upload.log
 ```
 
 > **Note:** The Mac must be awake at 10:45 AM for the job to trigger. If it is asleep, macOS will not catch up on missed runs — the next trigger will be the following day at 10:45 AM.

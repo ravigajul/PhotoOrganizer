@@ -63,7 +63,7 @@ Interpret the output:
 ## Step 3 — Recent log (last 30 lines)
 
 ```bash
-tail -30 ~/Desktop/YouTube_Upload/launchd.log 2>/dev/null || echo "No log file yet"
+tail -30 ~/Library/Logs/youtube-upload.log 2>/dev/null || echo "No log file yet"
 ```
 
 Look for these patterns and explain what they mean:

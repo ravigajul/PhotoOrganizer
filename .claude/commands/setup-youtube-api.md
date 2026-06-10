@@ -138,7 +138,7 @@ launchctl load ~/Library/LaunchAgents/com.ravigajul.youtube-upload.plist
 launchctl list com.ravigajul.youtube-upload
 ```
 
-Logs go to `~/Desktop/YouTube_Upload/launchd.log`. To check status at any time, use `/check-progress`.
+Logs go to `~/Library/Logs/youtube-upload.log`. To check status at any time, use `/check-progress`.
 
 ---
 

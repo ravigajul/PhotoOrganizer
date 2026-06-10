@@ -975,12 +975,6 @@ Examples:
     else:
         output_dir = os.path.expanduser('~/Desktop/YouTube_Upload')
 
-    # Fast-exit before slow scan if quota window not open (schedule fires every 2h)
-    if args.upload:
-        _progress_file = os.path.join(output_dir, 'Videos', 'upload_progress.json')
-        if not check_upload_window(_progress_file):
-            sys.exit(0)
-    
     # Determine mode
     if args.move:
         mode = 'move'
@@ -1081,10 +1075,6 @@ Examples:
                 count_before = len(json.load(f))
 
         total_videos = sum(s['count'] for s in video_stats.values())
-
-        # Guard: don't start if we're still inside the 24h quota window
-        if not check_upload_window(progress_file, notify_email=args.notify_email):
-            sys.exit(0)
 
         # Guard: exit silently if another upload instance is already running
         if not acquire_upload_lock(progress_file):

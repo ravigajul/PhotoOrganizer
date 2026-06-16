@@ -869,9 +869,14 @@ def send_status_email(subject, body):
         print("  ⚠️  Email notification skipped — missing 'email' or 'app_password' in config")
         return
 
+    # Send to a distinct recipient when configured. Self-addressed mail
+    # (From == To) gets reclassified to Spam by Gmail over time; a separate
+    # recipient such as a "+youtube" alias delivers to the inbox normally.
+    recipient = config.get('recipient') or gmail
+
     msg = MIMEText(body, 'plain')
     msg['From'] = gmail
-    msg['To'] = gmail
+    msg['To'] = recipient
     msg['Subject'] = subject
 
     import time
@@ -882,7 +887,7 @@ def send_status_email(subject, body):
                 server.starttls()
                 server.login(gmail, app_password)
                 server.send_message(msg)
-            print(f"  📧 Status email sent to {gmail}")
+            print(f"  📧 Status email sent to {recipient}")
             return
         except Exception as e:
             last_err = e
